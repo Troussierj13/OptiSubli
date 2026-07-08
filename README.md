@@ -31,8 +31,21 @@ Chaque objet peut aussi **tolérer** des couleurs supplémentaires (section 3,
 « Tolère aussi ») : une exigence de sublimation dans une couleur tolérée ne coûte
 pas de jaune, au prix d'une châsse non opti (perte de stats assumée, ex. bottes
 mêlée qui acceptent le bleu pour de la maîtrise élémentaire). À coût de jaunes
-égal, l'algorithme minimise d'abord les châsses tolérées, puis maximise la
-réutilisation des jaunes déjà en place.
+égal, l'algorithme minimise d'abord les châsses tolérées, puis la perte de stats
+chiffrée, puis maximise la réutilisation des jaunes déjà en place.
+
+## Stats des châsses
+
+Le **niveau du stuff** (tranches de 20 à 245 par pas de 15) détermine le niveau
+max des châsses (1 par tranche, plafonné à 11). Les valeurs par stat et par
+niveau sont dérivées des formules du jeu (`subli.json`) — vérifiées :
+maîtrises secondaires 1→33, élémentaire 1→22, vie 4→88 — et doublées sur les
+objets concernés (`double_bonus`). Survoler une châsse dans les résultats affiche
+l'enchantement prévu, sa valeur, et la perte chiffrée si la couleur est tolérée.
+Les stats des stuffs support (résistances, soin, initiative…) ne sont pas comptées.
+La case « ❤️ vie » (chapeau, corps à corps : PV doublés) bascule l'objet en opti
+bleu avec des enchantements Vie. Le coût en éclats par châsse (1 → 12 415 selon
+le niveau) est affiché à titre indicatif.
 
 Les choix sont sauvegardés dans le navigateur (localStorage).
 

@@ -38,6 +38,8 @@ const state = {
   // Support : plastron en châsses libres (résistances doublées quelle que soit la
   // couleur) au lieu du full jaune qui laisse le choix des éléments de résistance.
   plastronLibre: false,
+  // Tranche de niveau du stuff (20 à 245 par pas de 15) : détermine le niveau max des châsses
+  tranche: 245,
   // Objet en cours d'enchantement (mode enchantement), ou null
   enchanting: null,
   // [{name, qty}]
@@ -48,6 +50,25 @@ const state = {
 for (const it of ITEMS) state.items[it.id] = { override: null, slots: [null, null, null, null], done: false, extraColors: [] };
 
 const SUBLI_BY_NAME = new Map(SUBLIMATIONS.map(s => [s.name, s]));
+const SHARD_BY_NAME = new Map(SHARDS.map(s => [s.name, s]));
+
+// Coût cumulé en éclats pour monter une châsse au niveau N (index N-1)
+const ECLATS = [1, 3, 7, 15, 31, 63, 127, 319, 895, 3199, 12415];
+
+// Tranches de niveau du stuff : 20 à 245 par pas de 15
+const TRANCHES = [];
+for (let t = 20; t <= 245; t += 15) TRANCHES.push(t);
+
+// Niveau de châsse max applicable pour la tranche courante (1 par tranche, plafonné à 11)
+function maxShardLevel() {
+  return Math.min(11, Math.floor((state.tranche - 20) / 15) + 1);
+}
+
+// Valeur d'une châsse au niveau donné : plancher(offset + ratio × niveau) selon le palier
+function shardValue(shard, lvl) {
+  const b = shard.brackets.find(x => lvl >= x[0] && lvl <= x[1]);
+  return b ? Math.floor(b[2] + b[3] * lvl) : 0;
+}
 
 function normalize(str) {
   return str.normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "").toLowerCase();
@@ -64,6 +85,7 @@ function effectiveOpti(item) {
   const cfg = state.items[item.id];
   if (cfg.override) return cfg.override === "ANY" ? null : cfg.override;
   if (item.any) return null;
+  if (cfg.focusVie) return "B"; // priorité Vie : PV doublés sur cet objet
   if (state.soins && item.soins) return item.soins;
   if (state.dos && item.dos) return item.dos;
   if (!state.crit && item.sansCrit && state.role !== "support") return item.sansCrit;
@@ -71,6 +93,48 @@ function effectiveOpti(item) {
   // Plastron support en châsses libres : couleur indifférente, comme un anneau
   if (base === "Y" && state.plastronLibre) return null;
   return base;
+}
+
+// Enchantement qu'on mettrait dans une châsse de cette couleur sur cet objet, selon le
+// rôle et les options. Retourne { shard, doubled } ou null si la stat n'est pas suivie
+// (résistances, soin, initiative, tacle/esquive des stuffs support : non comptées).
+function statFor(item, color) {
+  const mk = name => {
+    const sh = SHARD_BY_NAME.get(name);
+    return { shard: sh, doubled: sh.doubleOn.includes(item.id) };
+  };
+  if (color === "B" && state.items[item.id].focusVie) return mk("Vie");
+  if (state.role === "support") return null;
+  if (color === "R") {
+    return mk(state.role === "melee" ? "Maîtrise Mêlée" : "Maîtrise Distance");
+  }
+  if (color === "G") {
+    return mk(state.dos && item.dos ? "Maîtrise Dos" : "Maîtrise Critique");
+  }
+  if (color === "B") return mk("Maîtrise Elémentaire");
+  return null;
+}
+
+// Valeur chiffrée (doublement compris) au niveau de châsse de la tranche courante
+function statValue(st) {
+  return st ? shardValue(st.shard, maxShardLevel()) * (st.doubled ? 2 : 1) : null;
+}
+
+// Perte de stats d'un placement : somme, sur les châsses tolérées, de la différence
+// entre la stat opti et la stat réellement posée (0 si stats non suivies)
+function placementLoss(item, placement) {
+  if (!placement) return 0;
+  const opti = effectiveOpti(item);
+  if (opti === null || opti === "Y") return 0;
+  const optiVal = statValue(statFor(item, opti));
+  if (optiVal == null) return 0;
+  let loss = 0;
+  for (const sl of placement.layout) {
+    if (!sl.isTolerated) continue;
+    const v = statValue(statFor(item, sl.color));
+    loss += Math.max(0, optiVal - (v == null ? 0 : v));
+  }
+  return loss;
 }
 
 // Meilleur placement d'une subli (ou null) sur un objet.
@@ -151,11 +215,17 @@ function optimize(sublis) {
       bestPlacement(effectiveOpti(it), state.items[it.id].slots, s.colors.map(c => ID_TO_COLOR[c]),
         state.items[it.id].done, state.items[it.id].extraColors)));
 
+  // Perte de stats chiffrée par placement (attachée pour l'affichage)
+  for (let i = 0; i < ITEMS.length; i++) {
+    noSubli[i].loss = placementLoss(ITEMS[i], noSubli[i]);
+    for (const p of withSubli[i]) if (p) p.loss = placementLoss(ITEMS[i], p);
+  }
+
   // Score lexicographique : 1) minimiser les jaunes à obtenir, 2) à coût égal, minimiser
-  // les châsses en couleur tolérée (perte de stats), 3) maximiser la réutilisation des
-  // jaunes déjà en place (les sublis exigeantes vont sur les objets riches en jaunes).
-  // tolerated <= 30 et reused <= 40 au total : les poids 10000/100/1 ne se chevauchent pas.
-  const score = p => p.cost * 10000 + p.tolerated * 100 - p.reused;
+  // les châsses en couleur tolérée, 3) départager par la perte de stats chiffrée, puis
+  // 4) maximiser la réutilisation des jaunes déjà en place. Bornes : tolerated <= 30,
+  // loss*50 <= 75000 < 1e6, reused <= 40 < 50 : les poids ne se chevauchent pas.
+  const score = p => p.cost * 1e8 + p.tolerated * 1e6 + p.loss * 50 - p.reused;
 
   const memo = new Map();
   // Meilleur score pour placer les sublis restantes (mask = déjà placées) sur les objets i..fin
@@ -344,6 +414,10 @@ function renderItemsConfig() {
       <span class="opti-label">Châsses actuelles :</span>
       <span class="slots">${slotSelects}</span>
       ${extrasHtml}
+      ${SHARD_BY_NAME.get("Vie").doubleOn.includes(it.id) && !it.any ? `
+      <label class="vie-label" title="Priorité Vie : les PV sont doublés sur cet objet — la couleur opti devient bleue avec des enchantements Vie">
+        <input type="checkbox" data-vie ${cfg.focusVie ? "checked" : ""}> ❤️ vie
+      </label>` : ""}
       <label class="done-label" title="Châsses figées telles que déclarées : le plan ne proposera plus de nouvelles jaunes ici, et une sublimation n'y sera placée que si les couleurs correspondent déjà">
         <input type="checkbox" data-done ${cfg.done ? "checked" : ""}> fait
       </label>`;
@@ -354,6 +428,11 @@ function renderItemsConfig() {
     });
     row.querySelector("[data-done]").addEventListener("change", e => {
       cfg.done = e.target.checked;
+      update();
+    });
+    const vieCb = row.querySelector("[data-vie]");
+    if (vieCb) vieCb.addEventListener("change", e => {
+      cfg.focusVie = e.target.checked;
       update();
     });
     row.querySelectorAll("[data-extra]").forEach(cb => {
@@ -384,6 +463,33 @@ function expandedSublis() {
   return sublis;
 }
 
+// Infobulle d'une châsse : couleur + enchantement qu'on y mettrait + valeur chiffrée
+function slotStatText(item, sl) {
+  if (sl.color === "ANY") return "libre";
+  const opti = effectiveOpti(item);
+  if (sl.color === "Y") {
+    const st = opti && opti !== "Y" ? statFor(item, opti) : null;
+    const v = statValue(st);
+    return "jaune (joker)" + (v != null ? ` — enchantement ${st.shard.name} +${v}${st.doubled ? " (doublé)" : ""}` : "");
+  }
+  const st = statFor(item, sl.color);
+  const v = statValue(st);
+  let txt = COLOR_LABEL[sl.color] + (v != null ? ` — ${st.shard.name} +${v}${st.doubled ? " (doublé)" : ""}` : "");
+  if (sl.isTolerated) {
+    const so = opti && opti !== "Y" ? statFor(item, opti) : null;
+    const vo = statValue(so);
+    txt += vo != null ? ` · au lieu de ${so.shard.name} +${vo} → perte ${Math.max(0, vo - (v || 0))}` : " (tolérée, non opti)";
+  }
+  return txt;
+}
+
+// Unité de la perte affichée : celle de la stat opti de l'objet
+function lossUnit(item) {
+  const opti = effectiveOpti(item);
+  const st = opti && opti !== "Y" ? statFor(item, opti) : null;
+  return st && st.shard.name === "Vie" ? "vie" : "maîtrise";
+}
+
 function renderResults() {
   const resBox = $("results");
   const sumBox = $("summary");
@@ -405,10 +511,14 @@ function renderResults() {
     return;
   }
 
-  let totalReused = 0;
+  let totalReused = 0, lossMaitrise = 0, lossVie = 0;
   resBox.innerHTML = "";
   for (const { item, subli, placement } of result.perItem) {
     totalReused += placement.reused;
+    if (placement.loss) {
+      if (lossUnit(item) === "vie") lossVie += placement.loss;
+      else lossMaitrise += placement.loss;
+    }
     const done = state.items[item.id].done;
     const card = document.createElement("div");
     card.className = "result-card" + (done ? " done" : "");
@@ -416,7 +526,7 @@ function renderResults() {
     const slots = placement.layout.map((sl, i) => `
       <span class="slot">
         <span class="tag">${sl.isNew ? "à obtenir" : sl.isTolerated ? "tolérée" : ""}</span>
-        <i class="dot big c-${sl.color} ${sl.isNew ? "new" : ""}${sl.isTolerated ? " tolerated" : ""}" title="${COLOR_LABEL[sl.color]}${sl.isTolerated ? " (tolérée, non opti)" : ""}"></i>
+        <i class="dot big c-${sl.color} ${sl.isNew ? "new" : ""}${sl.isTolerated ? " tolerated" : ""}" title="${slotStatText(item, sl)}"></i>
         <span class="pos">${sl.inWin ? "●" : ""}&nbsp;</span>
       </span>`).join("");
 
@@ -431,13 +541,15 @@ function renderResults() {
       </div>
       <div class="subli-name ${subli ? "" : "none"}">${subli ? subli.name : "— aucune sublimation —"}</div>
       <div class="slots">${slots}</div>
-      <div class="window">${windowTxt}${placement.reused ? ` · ${placement.reused} jaune(s) déjà en place réutilisée(s)` : ""}${placement.tolerated ? ` · ${placement.tolerated} châsse(s) en couleur tolérée` : ""}</div>`;
+      <div class="window">${windowTxt}${placement.reused ? ` · ${placement.reused} jaune(s) déjà en place réutilisée(s)` : ""}${placement.tolerated ? ` · ${placement.tolerated} châsse(s) tolérée(s)${placement.loss ? ` (perte ${placement.loss} ${lossUnit(item)})` : ""}` : ""}</div>`;
     resBox.appendChild(card);
   }
 
   $("total-yellow").textContent = result.total;
   sumBox.innerHTML = `Total : <b>${result.total}</b> châsse(s) jaune(s) à obtenir` +
     (totalReused ? ` · ${totalReused} jaune(s) déjà possédée(s) réutilisée(s)` : "") +
+    (lossMaitrise ? ` · perte totale : <b>${lossMaitrise}</b> maîtrise` : "") +
+    (lossVie ? ` · perte : <b>${lossVie}</b> vie` : "") +
     ` · ${sublis.length} sublimation(s) placée(s).`;
 }
 
@@ -592,7 +704,7 @@ function renderEnchant() {
 function saveState() {
   localStorage.setItem("wakfu-opti", JSON.stringify({
     role: state.role, crit: state.crit, dos: state.dos, soins: state.soins,
-    plastronLibre: state.plastronLibre, enchanting: state.enchanting,
+    plastronLibre: state.plastronLibre, tranche: state.tranche, enchanting: state.enchanting,
     chosen: state.chosen, items: state.items,
   }));
 }
@@ -607,6 +719,7 @@ function loadState() {
     state.dos = !!s.dos;
     state.soins = !!s.soins;
     state.plastronLibre = !!s.plastronLibre;
+    state.tranche = TRANCHES.includes(s.tranche) ? s.tranche : 245;
     state.enchanting = s.enchanting || null;
     state.chosen = (s.chosen || []).filter(c => SUBLI_BY_NAME.has(c.name));
     for (const it of ITEMS) {
@@ -618,9 +731,23 @@ function loadState() {
 
 /* ---- Mise à jour globale ---- */
 
+// Récap de la tranche : niveau de châsse, valeurs par stat (x2 si doublée), coût en éclats
+function renderTranche() {
+  const lvl = maxShardLevel();
+  const v = name => shardValue(SHARD_BY_NAME.get(name), lvl);
+  const sec = v("Maîtrise Mêlée"), ele = v("Maîtrise Elémentaire"), vie = v("Vie");
+  const ecl = ECLATS[lvl - 1];
+  const fmt = n => n.toLocaleString("fr-FR");
+  $("shard-info").innerHTML =
+    `Châsses <b>niveau ${lvl}</b> — maîtrise secondaire <b>+${sec}</b> (${sec * 2} doublée) · ` +
+    `élémentaire <b>+${ele}</b> (${ele * 2}) · vie <b>+${vie}</b> (${vie * 2}) · ` +
+    `coût : <b>${fmt(ecl)}</b> éclats/châsse, ${fmt(ecl * 40)} pour les 40 châsses du stuff`;
+}
+
 function update() {
   // Le switch plastron n'a de sens qu'en support (seul cas où l'opti est jaune)
   $("plastron-libre-wrap").style.display = state.role === "support" ? "" : "none";
+  renderTranche();
   renderChosen();
   renderItemsConfig();
   renderResults();
@@ -638,6 +765,7 @@ $("opt-crit").addEventListener("change", e => { state.crit = e.target.checked; u
 $("opt-dos").addEventListener("change", e => { state.dos = e.target.checked; update(); });
 $("opt-soins").addEventListener("change", e => { state.soins = e.target.checked; update(); });
 $("opt-plastron-libre").addEventListener("change", e => { state.plastronLibre = e.target.checked; update(); });
+$("tranche-select").addEventListener("change", e => { state.tranche = +e.target.value; update(); });
 
 $("subli-search").addEventListener("input", () => { searchActive = -1; renderSearch(); });
 $("subli-search").addEventListener("keydown", e => {
@@ -672,4 +800,6 @@ $("opt-crit").checked = state.crit;
 $("opt-dos").checked = state.dos;
 $("opt-soins").checked = state.soins;
 $("opt-plastron-libre").checked = state.plastronLibre;
+$("tranche-select").innerHTML = TRANCHES.map(t =>
+  `<option value="${t}" ${state.tranche === t ? "selected" : ""}>${t}</option>`).join("");
 update();

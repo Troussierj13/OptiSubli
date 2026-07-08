@@ -282,6 +282,37 @@ h2 .counter { color: var(--muted); font-weight: 400; font-size: 14px; }
 .ordre-item.no-levier .ordre-levier { color: var(--muted); font-weight: 400; }
 .ordre-item.done { opacity: .5; }
 
+/* ---- Tranche de niveau ---- */
+.tranche-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.tranche-label { white-space: nowrap; }
+#tranche-select {
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 15px;
+  margin-left: 4px;
+}
+#shard-info { margin: 0; }
+#shard-info b { color: var(--accent); }
+
+.vie-label {
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.vie-label input { accent-color: var(--red); }
+
 /* ---- Couleurs tolérées ---- */
 .dot.tolerated { border: 2px dashed rgba(255, 255, 255, .55); }
 .extras { display: flex; gap: 6px; align-items: center; }
