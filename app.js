@@ -38,12 +38,14 @@ const state = {
   // Support : plastron en châsses libres (résistances doublées quelle que soit la
   // couleur) au lieu du full jaune qui laisse le choix des éléments de résistance.
   plastronLibre: false,
+  // Objet en cours d'enchantement (mode enchantement), ou null
+  enchanting: null,
   // [{name, qty}]
   chosen: [],
   // itemId -> { override: 'R'|'G'|'B'|'Y'|null, slots: [4 x ('R'|'G'|'B'|'Y'|null)] }
   items: {},
 };
-for (const it of ITEMS) state.items[it.id] = { override: null, slots: [null, null, null, null], done: false };
+for (const it of ITEMS) state.items[it.id] = { override: null, slots: [null, null, null, null], done: false, extraColors: [] };
 
 const SUBLI_BY_NAME = new Map(SUBLIMATIONS.map(s => [s.name, s]));
 
@@ -72,17 +74,19 @@ function effectiveOpti(item) {
 }
 
 // Meilleur placement d'une subli (ou null) sur un objet.
-// Retourne { cost, reused, layout: [{color, isNew, inWin}], offset }
-//  - cost   : nb de châsses jaunes à obtenir
-//  - reused : nb de jaunes déjà en place et réutilisées
+// Retourne { cost, reused, tolerated, layout: [{color, isNew, inWin, isTolerated}], offset }
+//  - cost      : nb de châsses jaunes à obtenir
+//  - reused    : nb de jaunes déjà en place et réutilisées
+//  - tolerated : nb de châsses posées dans une couleur tolérée (non opti mais acceptée)
 // Objet « fait » : châsses figées, la subli doit rentrer telle quelle (jaune déjà
 // en place = joker, emplacement vide = châsse normale à poser) → null si impossible.
-function bestPlacement(opti, existing, subliColors, done) {
+function bestPlacement(opti, existing, subliColors, done, extras) {
+  const acc = !done && extras && extras.length ? new Set(extras) : null;
   const offsets = subliColors ? [0, 1] : [null];
   let best = null;
   for (const off of offsets) {
     const layout = [];
-    let cost = 0, reused = 0, feasible = true;
+    let cost = 0, reused = 0, tolerated = 0, feasible = true;
     for (let pos = 0; pos < 4; pos++) {
       const inWin = off !== null && pos >= off && pos < off + 3;
       if (done) {
@@ -93,35 +97,40 @@ function bestPlacement(opti, existing, subliColors, done) {
           else if (!existing[pos]) color = need;
           else if (existing[pos] !== need) feasible = false;
         }
-        layout.push({ color, isNew: false, inWin });
+        layout.push({ color, isNew: false, inWin, isTolerated: false });
         continue;
       }
-      let base, needY = false;
+      let base, needY = false, tol = false;
       if (opti === null) {
         base = inWin ? subliColors[pos - off] : "ANY";
       } else if (inWin) {
         const need = subliColors[pos - off];
         if (need === opti) base = opti;
+        else if (acc && acc.has(need)) { base = need; tol = true; }
         else { base = "Y"; needY = true; }
       } else {
         base = opti;
         if (opti === "Y") needY = true;
       }
-      let color = base, isNew = false;
+      let color = base, isNew = false, isTolerated = false;
       if (needY) {
         color = "Y";
         if (existing[pos] === "Y") reused++;
         else { cost++; isNew = true; }
       } else if (existing[pos] === "Y") {
-        color = "Y"; // un jaune déjà en place convient toujours
+        color = "Y"; // un jaune déjà en place convient toujours (et évite une tolérance)
+      } else if (tol) {
+        isTolerated = true; tolerated++;
       }
-      layout.push({ color, isNew, inWin });
+      layout.push({ color, isNew, inWin, isTolerated });
     }
     if (!feasible) continue;
-    const cand = { cost, reused, layout, offset: off };
-    if (!best || cand.cost < best.cost || (cand.cost === best.cost && cand.reused > best.reused)) {
-      best = cand;
-    }
+    const cand = { cost, reused, tolerated, layout, offset: off };
+    const better = !best
+      || cand.cost < best.cost
+      || (cand.cost === best.cost && (cand.tolerated < best.tolerated
+      || (cand.tolerated === best.tolerated && cand.reused > best.reused)));
+    if (better) best = cand;
   }
   return best;
 }
@@ -135,15 +144,18 @@ function optimize(sublis) {
 
   // Coûts précalculés (null = subli impossible sur un objet « fait »)
   const noSubli = ITEMS.map(it =>
-    bestPlacement(effectiveOpti(it), state.items[it.id].slots, null, state.items[it.id].done));
+    bestPlacement(effectiveOpti(it), state.items[it.id].slots, null,
+      state.items[it.id].done, state.items[it.id].extraColors));
   const withSubli = ITEMS.map(it =>
     sublis.map(s =>
-      bestPlacement(effectiveOpti(it), state.items[it.id].slots, s.colors.map(c => ID_TO_COLOR[c]), state.items[it.id].done)));
+      bestPlacement(effectiveOpti(it), state.items[it.id].slots, s.colors.map(c => ID_TO_COLOR[c]),
+        state.items[it.id].done, state.items[it.id].extraColors)));
 
-  // Score lexicographique : d'abord minimiser les jaunes à obtenir, puis, à coût égal,
-  // maximiser la réutilisation des jaunes déjà en place (les sublis les plus exigeantes
-  // vont ainsi sur les objets riches en jaunes). reused <= 40 au total, donc x100 suffit.
-  const score = p => p.cost * 100 - p.reused;
+  // Score lexicographique : 1) minimiser les jaunes à obtenir, 2) à coût égal, minimiser
+  // les châsses en couleur tolérée (perte de stats), 3) maximiser la réutilisation des
+  // jaunes déjà en place (les sublis exigeantes vont sur les objets riches en jaunes).
+  // tolerated <= 30 et reused <= 40 au total : les poids 10000/100/1 ne se chevauchent pas.
+  const score = p => p.cost * 10000 + p.tolerated * 100 - p.reused;
 
   const memo = new Map();
   // Meilleur score pour placer les sublis restantes (mask = déjà placées) sur les objets i..fin
@@ -318,12 +330,20 @@ function renderItemsConfig() {
       COLOR_OPTIONS.map(([val, l]) => `<option value="${val}" ${v === (val || null) ? "selected" : ""}>${l}</option>`).join("") +
       `</select>`).join("");
 
+    const extrasHtml = opti === null ? "" : `
+      <span class="opti-label" title="Couleurs non opti mais acceptables (petite perte de stats assumée) : une exigence de la subli dans une de ces couleurs ne coûte pas de jaune">Tolère aussi :</span>
+      <span class="extras">${["R", "G", "B"].filter(c => c !== opti).map(c => `
+        <label class="extra-c" title="${COLOR_LABEL[c]}"><input type="checkbox" data-extra="${c}"
+          ${(cfg.extraColors || []).includes(c) ? "checked" : ""}><i class="dot c-${c}"></i></label>`).join("")}
+      </span>`;
+
     row.innerHTML = `
       <span class="item-name">${it.icon} ${it.label}</span>
       <span class="opti-label">Couleur opti :</span>
       <select data-override>${overrideOpts}</select>
       <span class="opti-label">Châsses actuelles :</span>
       <span class="slots">${slotSelects}</span>
+      ${extrasHtml}
       <label class="done-label" title="Châsses figées telles que déclarées : le plan ne proposera plus de nouvelles jaunes ici, et une sublimation n'y sera placée que si les couleurs correspondent déjà">
         <input type="checkbox" data-done ${cfg.done ? "checked" : ""}> fait
       </label>`;
@@ -335,6 +355,12 @@ function renderItemsConfig() {
     row.querySelector("[data-done]").addEventListener("change", e => {
       cfg.done = e.target.checked;
       update();
+    });
+    row.querySelectorAll("[data-extra]").forEach(cb => {
+      cb.addEventListener("change", () => {
+        cfg.extraColors = [...row.querySelectorAll("[data-extra]:checked")].map(x => x.dataset.extra);
+        update();
+      });
     });
     row.querySelectorAll("[data-slot]").forEach(sel => {
       sel.addEventListener("change", e => {
@@ -389,8 +415,8 @@ function renderResults() {
 
     const slots = placement.layout.map((sl, i) => `
       <span class="slot">
-        <span class="tag">${sl.isNew ? "à obtenir" : ""}</span>
-        <i class="dot big c-${sl.color} ${sl.isNew ? "new" : ""}" title="${COLOR_LABEL[sl.color]}"></i>
+        <span class="tag">${sl.isNew ? "à obtenir" : sl.isTolerated ? "tolérée" : ""}</span>
+        <i class="dot big c-${sl.color} ${sl.isNew ? "new" : ""}${sl.isTolerated ? " tolerated" : ""}" title="${COLOR_LABEL[sl.color]}${sl.isTolerated ? " (tolérée, non opti)" : ""}"></i>
         <span class="pos">${sl.inWin ? "●" : ""}&nbsp;</span>
       </span>`).join("");
 
@@ -405,7 +431,7 @@ function renderResults() {
       </div>
       <div class="subli-name ${subli ? "" : "none"}">${subli ? subli.name : "— aucune sublimation —"}</div>
       <div class="slots">${slots}</div>
-      <div class="window">${windowTxt}${placement.reused ? ` · ${placement.reused} jaune(s) déjà en place réutilisée(s)` : ""}</div>`;
+      <div class="window">${windowTxt}${placement.reused ? ` · ${placement.reused} jaune(s) déjà en place réutilisée(s)` : ""}${placement.tolerated ? ` · ${placement.tolerated} châsse(s) en couleur tolérée` : ""}</div>`;
     resBox.appendChild(card);
   }
 
@@ -445,12 +471,129 @@ function renderOrdre() {
   }
 }
 
+/* ---- Mode enchantement (objet en cours) ---- */
+
+// Aperçu actif : { itemId, saved: copie de la config avant aperçu, row }
+let enchPreview = null;
+
+function dotL(c, cls = "", title = "") {
+  return `<i class="dot ${cls} c-${c}" title="${title || COLOR_LABEL[c]}"></i>`;
+}
+
+function renderEnchant() {
+  const sel = $("ench-select");
+  const list = $("ench-list");
+
+  const opts = ['<option value="">— choisir un objet —</option>'];
+  for (const it of ITEMS) {
+    if (state.items[it.id].done) continue;
+    opts.push(`<option value="${it.id}" ${state.enchanting === it.id ? "selected" : ""}>${it.label}</option>`);
+  }
+  sel.innerHTML = opts.join("");
+  sel.disabled = !!enchPreview;
+
+  if (enchPreview) {
+    const it = ITEMS.find(i => i.id === enchPreview.itemId);
+    const r = enchPreview.row;
+    list.innerHTML = `
+      <div class="ench-banner">
+        <span>Aperçu : <b>${it.icon} ${it.label}</b> marqué « fait » en</span>
+        <span class="pattern">${r.cols.map(c => dotL(c)).join("")}${dotL(r.freeColor, "free-slot", "châsse restante : couleur opti")}</span>
+        <span>→ total <b>${r.total}</b> jaune(s)${r.delta ? ` (−${r.delta})` : ""}</span>
+        <button id="ench-keep">✓ Je garde</button>
+        <button id="ench-cancel">✕ Annuler</button>
+      </div>`;
+    $("ench-keep").addEventListener("click", () => {
+      enchPreview = null;
+      state.enchanting = null;
+      update();
+    });
+    $("ench-cancel").addEventListener("click", () => {
+      state.items[enchPreview.itemId] = enchPreview.saved;
+      enchPreview = null;
+      update();
+    });
+    return;
+  }
+
+  if (state.enchanting && (!state.items[state.enchanting] || state.items[state.enchanting].done)) {
+    state.enchanting = null;
+  }
+  if (!state.enchanting) { list.innerHTML = ""; return; }
+
+  const it = ITEMS.find(i => i.id === state.enchanting);
+  const sublis = expandedSublis();
+  if (!sublis.length) {
+    list.innerHTML = `<div class="ench-empty">Ajoute d'abord des sublimations (section 2).</div>`;
+    return;
+  }
+  if (sublis.length > MAX_SUBLIS) { list.innerHTML = ""; return; }
+  const base = optimize(sublis);
+  if (!base) { list.innerHTML = ""; return; }
+
+  const primary = effectiveOpti(it);
+  if (primary === null) {
+    list.innerHTML = `<div class="ench-empty">${it.icon} ${it.label} : châsses libres —
+      n'importe quelles couleurs conviennent, pose simplement celles de la sublimation prévue (section 4).</div>`;
+    return;
+  }
+
+  // Un motif par subli choisie : ses 3 couleurs + la couleur opti sur la châsse restante.
+  // On simule « objet fait avec ce motif » et on garde ceux qui égalent ou battent le plan.
+  const cfg = state.items[it.id];
+  const savedSlots = cfg.slots, savedDone = cfg.done;
+  const seen = new Set();
+  const rows = [];
+  for (const c of state.chosen) {
+    if (seen.has(c.name)) continue;
+    seen.add(c.name);
+    const s = SUBLI_BY_NAME.get(c.name);
+    const cols = s.colors.map(x => ID_TO_COLOR[x]);
+    cfg.slots = [cols[0], cols[1], cols[2], primary];
+    cfg.done = true;
+    const sim = optimize(sublis);
+    cfg.slots = savedSlots; cfg.done = savedDone;
+    if (!sim || sim.total > base.total) continue;
+    rows.push({ name: c.name, cols, freeColor: primary, total: sim.total, delta: base.total - sim.total });
+  }
+  rows.sort((a, b) => a.total - b.total || b.delta - a.delta);
+
+  if (!rows.length) {
+    list.innerHTML = `<div class="ench-empty">Aucune combinaison sans jaune ne fait mieux que le plan
+      sur cet objet — suis le plan (section 4) et déclare les jaunes bonus dans la section 3.</div>`;
+    return;
+  }
+
+  list.innerHTML = `<div class="hint">Combinaisons qui valent le coup de s'arrêter sur ${it.icon}
+    <b>${it.label}</b> — la subli peut aussi glisser d'un cran (châsses 2-4), et une jaune roulée
+    remplace n'importe laquelle de ces couleurs :</div>` +
+    rows.map((r, i) => `
+      <div class="ench-row">
+        <span class="pattern">${r.cols.map(c => dotL(c)).join("")}${dotL(r.freeColor, "free-slot", "châsse restante : couleur opti (" + COLOR_LABEL[r.freeColor] + ")")}</span>
+        <span class="ench-name">${r.name}</span>
+        <span class="ench-total ${r.delta ? "" : "equal"}">${r.delta ? `−${r.delta} jaune(s) → total ${r.total}` : `= plan actuel (${r.total} jaune(s))`}</span>
+        <button data-ench="${i}">Prévisualiser</button>
+      </div>`).join("");
+
+  list.querySelectorAll("[data-ench]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const r = rows[+btn.dataset.ench];
+      const cur = state.items[state.enchanting];
+      enchPreview = { itemId: state.enchanting, saved: JSON.parse(JSON.stringify(cur)), row: r };
+      cur.slots = [r.cols[0], r.cols[1], r.cols[2], r.freeColor];
+      cur.done = true;
+      update();
+    });
+  });
+}
+
 /* ---- Persistance ---- */
 
 function saveState() {
   localStorage.setItem("wakfu-opti", JSON.stringify({
     role: state.role, crit: state.crit, dos: state.dos, soins: state.soins,
-    plastronLibre: state.plastronLibre, chosen: state.chosen, items: state.items,
+    plastronLibre: state.plastronLibre, enchanting: state.enchanting,
+    chosen: state.chosen, items: state.items,
   }));
 }
 
@@ -464,9 +607,11 @@ function loadState() {
     state.dos = !!s.dos;
     state.soins = !!s.soins;
     state.plastronLibre = !!s.plastronLibre;
+    state.enchanting = s.enchanting || null;
     state.chosen = (s.chosen || []).filter(c => SUBLI_BY_NAME.has(c.name));
     for (const it of ITEMS) {
       if (s.items && s.items[it.id]) state.items[it.id] = s.items[it.id];
+      if (!state.items[it.id].extraColors) state.items[it.id].extraColors = [];
     }
   } catch { /* état corrompu : on repart de zéro */ }
 }
@@ -480,6 +625,7 @@ function update() {
   renderItemsConfig();
   renderResults();
   renderOrdre();
+  renderEnchant();
   saveState();
 }
 
@@ -507,6 +653,11 @@ $("subli-search").addEventListener("keydown", e => {
 });
 $("subli-search").addEventListener("blur", () => {
   setTimeout(() => $("search-results").classList.remove("open"), 150);
+});
+
+$("ench-select").addEventListener("change", e => {
+  state.enchanting = e.target.value || null;
+  update();
 });
 
 $("items-toggle").addEventListener("click", () => {

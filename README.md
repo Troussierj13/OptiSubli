@@ -22,6 +22,17 @@ Ouvrir `index.html` dans un navigateur (double-clic), aucune installation néces
    les objets à fort levier ; après chaque objet, déclarer les couleurs obtenues
    (section 3) et cocher « fait » — un objet fait garde ses châsses telles quelles
    et n'accueille une sublimation que si les couleurs correspondent déjà.
+6. **Mode enchantement** : sélectionner l'objet en cours de roll ; l'appli liste
+   les combinaisons de couleurs (sans jaune) qui égalent ou battent le plan.
+   En rouler une → « Prévisualiser » applique le nouveau plan complet, puis
+   « Je garde » ou « Annuler ».
+
+Chaque objet peut aussi **tolérer** des couleurs supplémentaires (section 3,
+« Tolère aussi ») : une exigence de sublimation dans une couleur tolérée ne coûte
+pas de jaune, au prix d'une châsse non opti (perte de stats assumée, ex. bottes
+mêlée qui acceptent le bleu pour de la maîtrise élémentaire). À coût de jaunes
+égal, l'algorithme minimise d'abord les châsses tolérées, puis maximise la
+réutilisation des jaunes déjà en place.
 
 Les choix sont sauvegardés dans le navigateur (localStorage).
 

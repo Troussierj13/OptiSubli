@@ -281,3 +281,58 @@ h2 .counter { color: var(--muted); font-weight: 400; font-size: 14px; }
 .ordre-item.no-levier { opacity: .7; }
 .ordre-item.no-levier .ordre-levier { color: var(--muted); font-weight: 400; }
 .ordre-item.done { opacity: .5; }
+
+/* ---- Couleurs tolérées ---- */
+.dot.tolerated { border: 2px dashed rgba(255, 255, 255, .55); }
+.extras { display: flex; gap: 6px; align-items: center; }
+.extra-c { display: flex; align-items: center; gap: 3px; cursor: pointer; }
+.extra-c input { accent-color: var(--accent); margin: 0; }
+
+/* ---- Mode enchantement ---- */
+.ench-controls { margin-bottom: 12px; }
+#ench-select {
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 15px;
+  margin-left: 6px;
+}
+.ench-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+}
+.ench-row .pattern, .ench-banner .pattern { display: flex; gap: 5px; align-items: center; }
+.ench-row .ench-name { font-weight: 600; min-width: 150px; }
+.ench-row .ench-total { color: var(--accent); font-size: 13px; font-weight: 600; }
+.ench-row .ench-total.equal { color: var(--muted); font-weight: 400; }
+.ench-row button, .ench-banner button {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.ench-row button { margin-left: auto; }
+.ench-row button:hover, .ench-banner button:hover { border-color: var(--accent); }
+.dot.free-slot { opacity: .55; border: 2px dashed rgba(255, 255, 255, .45); }
+.ench-banner {
+  background: #3a3626;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ench-empty { color: var(--muted); font-style: italic; }

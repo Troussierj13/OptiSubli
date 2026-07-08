@@ -70,6 +70,7 @@
       <span><i class="dot c-B"></i> bleu</span>
       <span><i class="dot c-Y"></i> jaune</span>
       <span><i class="dot c-Y new"></i> jaune à obtenir</span>
+      <span><i class="dot c-B tolerated"></i> couleur tolérée (non opti)</span>
       <span><i class="dot c-ANY"></i> libre</span>
     </div>
     <div class="results" id="results"></div>
@@ -83,6 +84,19 @@
     Après chaque objet : déclare les couleurs réellement obtenues dans la section 3 et coche « fait » —
     l'ordre et le placement se recalculent automatiquement.</p>
     <ol class="ordre-list" id="ordre-list"></ol>
+  </section>
+
+  <section class="panel">
+    <h2>6. Mode enchantement — objet en cours</h2>
+    <p class="hint">Pendant que tu roules les châsses d'un objet, sélectionne-le ici : l'appli liste les
+    combinaisons de couleurs (sans jaune) qui égalent ou battent le plan. Si tu roules l'une d'elles,
+    clique « Prévisualiser » pour voir le nouveau plan complet, puis garde ou annule.
+    Les jaunes bonus se déclarent directement dans la section 3.</p>
+    <div class="ench-controls">
+      J'enchante actuellement :
+      <select id="ench-select"></select>
+    </div>
+    <div id="ench-list"></div>
   </section>
 
 </main>
