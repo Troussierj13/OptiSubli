@@ -10,7 +10,9 @@ Ouvrir `index.html` dans un navigateur (double-clic), aucune installation néces
 1. **Mon personnage** : choisir le rôle (Mêlée / Distance / Support) et les options
    (Spé Crit, Spé Dos, Soins) qui ajustent la couleur opti de certains objets.
 2. **Mes sublimations** : rechercher et ajouter les sublimations voulues (max 10,
-   quantité réglable, le `max_usage` du jeu est vérifié).
+   quantité réglable). Tous les niveaux (I/II/III) sont disponibles ; le cumul
+   d'une famille se compte en niveaux (I=1, II=2, III=3) et est validé contre le
+   maximum du jeu — ex. Embuscade (max 6) : 4× I + 1× II = 6, plein.
 3. **Mes objets** (optionnel) : indiquer les châsses déjà en place sur tes objets —
    les jaunes existantes sont réutilisées par le calcul — ou forcer la couleur opti
    d'un objet.

@@ -136,6 +136,8 @@ h2 .counter { color: var(--muted); font-weight: 400; font-size: 14px; }
 }
 .subli-list .name { flex: 1; font-weight: 600; }
 .subli-list .colors { display: flex; gap: 4px; }
+.subli-list .fam-cumul { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.subli-list .fam-cumul.over { color: #f0a050; font-weight: 700; }
 .subli-list .qty { display: flex; align-items: center; gap: 8px; }
 .subli-list .qty button {
   width: 26px; height: 26px;

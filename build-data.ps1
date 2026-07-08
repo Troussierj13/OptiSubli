@@ -3,14 +3,25 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $j = Get-Content (Join-Path $root 'subli.json') -Raw | ConvertFrom-Json
 
+# Chaque sublimation de base porte ses niveaux superieurs dans children (memes couleurs,
+# meme max familial). Le cumul d'une famille se compte en niveaux : qty x level <= max.
 $out = @()
-foreach ($s in ($j.sublimations | Sort-Object name_shard)) {
-    $out += [ordered]@{
-        name   = $s.name_shard
-        colors = @($s.colors_needed | ForEach-Object { [int]$_.id_color })
-        max    = $s.max_usage
+foreach ($s in $j.sublimations) {
+    $family = $s.name_shard -replace ' (I{1,3}|IV|V)$', ''
+    $colors = @($s.colors_needed | ForEach-Object { [int]$_.id_color })
+    $entries = @($s) + @($s.children | Where-Object { $null -ne $_ })
+    foreach ($e in $entries) {
+        $lvl = if ($null -ne $e.level) { [int]$e.level } else { 1 }
+        $out += [ordered]@{
+            name   = $e.name_shard
+            colors = $colors
+            max    = $e.max_usage
+            level  = $lvl
+            family = $family
+        }
     }
 }
+$out = @($out | Sort-Object name)
 
 # Chasses d'enchantement : couleur, objets ou le bonus est double, formule par palier
 # (valeur au niveau L = plancher(offset + ratio * L), paliers [minLvl, maxLvl, offset, ratio])

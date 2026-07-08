@@ -372,16 +372,34 @@ function renderChosen() {
   ul.innerHTML = "";
   let total = 0;
   const warnings = [];
+
+  // Cumul par famille : chaque exemplaire compte son niveau (I=1, II=2, III=3).
+  // Ex. Embuscade (max 6) : 4x Embuscade I + 1x Embuscade II = 6 niveaux, plein.
+  const famUnits = {};
+  for (const c of state.chosen) {
+    const s = SUBLI_BY_NAME.get(c.name);
+    const f = s.family || c.name;
+    if (!famUnits[f]) famUnits[f] = { units: 0, max: s.max };
+    famUnits[f].units += c.qty * (s.level || 1);
+  }
+  for (const f in famUnits) {
+    const d = famUnits[f];
+    if (d.max != null && d.units > d.max) {
+      warnings.push(`« ${f} » dépasse son cumul max : ${d.units}/${d.max} niveaux (I compte 1, II compte 2, III compte 3).`);
+    }
+  }
+
   for (const c of state.chosen) {
     const s = SUBLI_BY_NAME.get(c.name);
     total += c.qty;
-    if (s.max != null && c.qty > s.max) {
-      warnings.push(`« ${c.name} » est limitée à ${s.max} exemplaire(s).`);
-    }
+    const f = s.family || c.name;
+    const d = famUnits[f];
     const li = document.createElement("li");
     li.innerHTML = `
       <span class="colors">${colorDots(s.colors)}</span>
       <span class="name">${c.name}</span>
+      <span class="fam-cumul ${d.max != null && d.units > d.max ? "over" : ""}"
+        title="Cumul de la famille ${f} : chaque exemplaire compte son niveau (I=1, II=2, III=3)">${d.units}/${d.max != null ? d.max : "∞"} niv.</span>
       <span class="qty">
         <button data-act="minus">−</button>
         <b>x${c.qty}</b>
