@@ -234,3 +234,50 @@ h2 .counter { color: var(--muted); font-weight: 400; font-size: 14px; }
 
 .summary { margin-top: 14px; color: var(--muted); }
 .summary b { color: var(--accent); }
+
+.result-card.done { opacity: .65; }
+
+/* ---- Ordre d'enchantement ---- */
+.done-label {
+  margin-left: auto;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.done-label input { accent-color: var(--green); }
+
+.ordre-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  counter-reset: ordre;
+}
+.ordre-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.ordre-item:not(.done) { counter-increment: ordre; }
+.ordre-item::before {
+  content: counter(ordre);
+  font-weight: 800;
+  color: var(--accent);
+  width: 22px;
+  text-align: center;
+}
+.ordre-item.done::before { content: "✓"; color: var(--green); }
+.ordre-item .ordre-name { font-weight: 600; width: 170px; }
+.ordre-item .ordre-info { color: var(--muted); font-size: 13px; width: 140px; }
+.ordre-item .ordre-levier { color: var(--accent); font-size: 13px; font-weight: 600; }
+.ordre-item.no-levier { opacity: .7; }
+.ordre-item.no-levier .ordre-levier { color: var(--muted); font-weight: 400; }
+.ordre-item.done { opacity: .5; }

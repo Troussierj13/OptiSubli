@@ -17,6 +17,11 @@ Ouvrir `index.html` dans un navigateur (double-clic), aucune installation néces
 4. **Placement optimal** : affectation exacte des sublimations aux 10 objets,
    couleur de chaque châsse, position de la sublimation (châsses 1-3 ou 2-4),
    et total de jaunes à obtenir.
+5. **Ordre d'enchantement conseillé** : pour chaque objet restant, « levier de
+   chance » = jaunes économisées si l'objet sortait full jaune. Enchanter d'abord
+   les objets à fort levier ; après chaque objet, déclarer les couleurs obtenues
+   (section 3) et cocher « fait » — un objet fait garde ses châsses telles quelles
+   et n'accueille une sublimation que si les couleurs correspondent déjà.
 
 Les choix sont sauvegardés dans le navigateur (localStorage).
 

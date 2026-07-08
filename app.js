@@ -43,7 +43,7 @@ const state = {
   // itemId -> { override: 'R'|'G'|'B'|'Y'|null, slots: [4 x ('R'|'G'|'B'|'Y'|null)] }
   items: {},
 };
-for (const it of ITEMS) state.items[it.id] = { override: null, slots: [null, null, null, null] };
+for (const it of ITEMS) state.items[it.id] = { override: null, slots: [null, null, null, null], done: false };
 
 const SUBLI_BY_NAME = new Map(SUBLIMATIONS.map(s => [s.name, s]));
 
@@ -75,14 +75,27 @@ function effectiveOpti(item) {
 // Retourne { cost, reused, layout: [{color, isNew, inWin}], offset }
 //  - cost   : nb de châsses jaunes à obtenir
 //  - reused : nb de jaunes déjà en place et réutilisées
-function bestPlacement(opti, existing, subliColors) {
+// Objet « fait » : châsses figées, la subli doit rentrer telle quelle (jaune déjà
+// en place = joker, emplacement vide = châsse normale à poser) → null si impossible.
+function bestPlacement(opti, existing, subliColors, done) {
   const offsets = subliColors ? [0, 1] : [null];
   let best = null;
   for (const off of offsets) {
     const layout = [];
-    let cost = 0, reused = 0;
+    let cost = 0, reused = 0, feasible = true;
     for (let pos = 0; pos < 4; pos++) {
       const inWin = off !== null && pos >= off && pos < off + 3;
+      if (done) {
+        let color = existing[pos] || "ANY";
+        if (inWin) {
+          const need = subliColors[pos - off];
+          if (existing[pos] === "Y") reused++;
+          else if (!existing[pos]) color = need;
+          else if (existing[pos] !== need) feasible = false;
+        }
+        layout.push({ color, isNew: false, inWin });
+        continue;
+      }
       let base, needY = false;
       if (opti === null) {
         base = inWin ? subliColors[pos - off] : "ANY";
@@ -104,6 +117,7 @@ function bestPlacement(opti, existing, subliColors) {
       }
       layout.push({ color, isNew, inWin });
     }
+    if (!feasible) continue;
     const cand = { cost, reused, layout, offset: off };
     if (!best || cand.cost < best.cost || (cand.cost === best.cost && cand.reused > best.reused)) {
       best = cand;
@@ -119,12 +133,12 @@ function optimize(sublis) {
   const n = sublis.length;
   const FULL = (1 << n) - 1;
 
-  // Coûts précalculés
+  // Coûts précalculés (null = subli impossible sur un objet « fait »)
   const noSubli = ITEMS.map(it =>
-    bestPlacement(effectiveOpti(it), state.items[it.id].slots, null));
+    bestPlacement(effectiveOpti(it), state.items[it.id].slots, null, state.items[it.id].done));
   const withSubli = ITEMS.map(it =>
     sublis.map(s =>
-      bestPlacement(effectiveOpti(it), state.items[it.id].slots, s.colors.map(c => ID_TO_COLOR[c]))));
+      bestPlacement(effectiveOpti(it), state.items[it.id].slots, s.colors.map(c => ID_TO_COLOR[c]), state.items[it.id].done)));
 
   // Score lexicographique : d'abord minimiser les jaunes à obtenir, puis, à coût égal,
   // maximiser la réutilisation des jaunes déjà en place (les sublis les plus exigeantes
@@ -145,6 +159,7 @@ function optimize(sublis) {
     // Option : une des sublis restantes
     for (let s = 0; s < n; s++) {
       if (mask & (1 << s)) continue;
+      if (withSubli[i][s] === null) continue;
       const r = go(i + 1, mask | (1 << s));
       if (r === null) continue;
       const sc = score(withSubli[i][s]) + r.score;
@@ -172,6 +187,28 @@ function optimize(sublis) {
     }
   }
   return { total, perItem };
+}
+
+// Ordre d'enchantement conseillé : pour chaque objet restant, « levier de chance » =
+// économie de jaunes si l'objet sortait full jaune (les objets où la chance rapporte
+// le plus sont à enchanter en premier).
+function computeOrdre(sublis) {
+  const base = optimize(sublis);
+  if (!base) return null;
+  const rows = [];
+  for (let i = 0; i < ITEMS.length; i++) {
+    const it = ITEMS[i];
+    const cfg = state.items[it.id];
+    if (cfg.done) continue;
+    const plannedCost = base.perItem[i].placement.cost;
+    const savedSlots = cfg.slots;
+    cfg.slots = ["Y", "Y", "Y", "Y"];
+    const lucky = optimize(sublis);
+    cfg.slots = savedSlots;
+    rows.push({ item: it, levier: lucky ? base.total - lucky.total : 0, plannedCost });
+  }
+  rows.sort((a, b) => b.levier - a.levier || b.plannedCost - a.plannedCost);
+  return { base, rows };
 }
 
 /* ============================================================
@@ -286,10 +323,17 @@ function renderItemsConfig() {
       <span class="opti-label">Couleur opti :</span>
       <select data-override>${overrideOpts}</select>
       <span class="opti-label">Châsses actuelles :</span>
-      <span class="slots">${slotSelects}</span>`;
+      <span class="slots">${slotSelects}</span>
+      <label class="done-label" title="Châsses figées telles que déclarées : le plan ne proposera plus de nouvelles jaunes ici, et une sublimation n'y sera placée que si les couleurs correspondent déjà">
+        <input type="checkbox" data-done ${cfg.done ? "checked" : ""}> fait
+      </label>`;
 
     row.querySelector("[data-override]").addEventListener("change", e => {
       cfg.override = e.target.value || null;
+      update();
+    });
+    row.querySelector("[data-done]").addEventListener("change", e => {
+      cfg.done = e.target.checked;
       update();
     });
     row.querySelectorAll("[data-slot]").forEach(sel => {
@@ -304,16 +348,20 @@ function renderItemsConfig() {
 
 /* ---- Résultats ---- */
 
-function renderResults() {
-  const resBox = $("results");
-  const sumBox = $("summary");
-
-  // Dépliage des exemplaires
+// Dépliage des exemplaires choisis (Carnage x2 => deux entrées)
+function expandedSublis() {
   const sublis = [];
   for (const c of state.chosen) {
     const s = SUBLI_BY_NAME.get(c.name);
     for (let k = 0; k < c.qty; k++) sublis.push({ name: c.name, colors: s.colors });
   }
+  return sublis;
+}
+
+function renderResults() {
+  const resBox = $("results");
+  const sumBox = $("summary");
+  const sublis = expandedSublis();
 
   if (sublis.length > MAX_SUBLIS) {
     resBox.innerHTML = "";
@@ -325,7 +373,9 @@ function renderResults() {
   const result = optimize(sublis);
   if (!result) {
     resBox.innerHTML = "";
-    sumBox.innerHTML = "Calcul impossible.";
+    sumBox.innerHTML = "Impossible de tout placer : les objets « faits » n'acceptent une sublimation " +
+      "que si leurs châsses correspondent déjà. Décoche « fait » quelque part ou retire une sublimation.";
+    $("total-yellow").textContent = "–";
     return;
   }
 
@@ -333,8 +383,9 @@ function renderResults() {
   resBox.innerHTML = "";
   for (const { item, subli, placement } of result.perItem) {
     totalReused += placement.reused;
+    const done = state.items[item.id].done;
     const card = document.createElement("div");
-    card.className = "result-card";
+    card.className = "result-card" + (done ? " done" : "");
 
     const slots = placement.layout.map((sl, i) => `
       <span class="slot">
@@ -350,7 +401,7 @@ function renderResults() {
     card.innerHTML = `
       <div class="head">
         <span class="item-title">${item.icon} ${item.label}</span>
-        <span class="cost ${placement.cost ? "" : "zero"}">${placement.cost ? placement.cost + " jaune(s) à obtenir" : "aucun jaune"}</span>
+        <span class="cost ${placement.cost ? "" : "zero"}">${done ? "✓ fait" : placement.cost ? placement.cost + " jaune(s) à obtenir" : "aucun jaune"}</span>
       </div>
       <div class="subli-name ${subli ? "" : "none"}">${subli ? subli.name : "— aucune sublimation —"}</div>
       <div class="slots">${slots}</div>
@@ -362,6 +413,36 @@ function renderResults() {
   sumBox.innerHTML = `Total : <b>${result.total}</b> châsse(s) jaune(s) à obtenir` +
     (totalReused ? ` · ${totalReused} jaune(s) déjà possédée(s) réutilisée(s)` : "") +
     ` · ${sublis.length} sublimation(s) placée(s).`;
+}
+
+/* ---- Ordre d'enchantement conseillé ---- */
+
+function renderOrdre() {
+  const box = $("ordre-list");
+  const sublis = expandedSublis();
+  if (sublis.length > MAX_SUBLIS) { box.innerHTML = ""; return; }
+  const data = computeOrdre(sublis);
+  if (!data) { box.innerHTML = ""; return; }
+
+  box.innerHTML = "";
+  for (const r of data.rows) {
+    const li = document.createElement("li");
+    li.className = "ordre-item" + (r.levier ? "" : " no-levier");
+    li.innerHTML = `
+      <span class="ordre-name">${r.item.icon} ${r.item.label}</span>
+      <span class="ordre-info">prévu : ${r.plannedCost} jaune(s)</span>
+      <span class="ordre-levier">${r.levier ? `si chance : jusqu'à −${r.levier} jaune(s)` : "aucun levier — à faire en dernier"}</span>`;
+    box.appendChild(li);
+  }
+  for (const it of ITEMS) {
+    if (!state.items[it.id].done) continue;
+    const li = document.createElement("li");
+    li.className = "ordre-item done";
+    li.innerHTML = `
+      <span class="ordre-name">${it.icon} ${it.label}</span>
+      <span class="ordre-info">✓ fait</span><span class="ordre-levier"></span>`;
+    box.appendChild(li);
+  }
 }
 
 /* ---- Persistance ---- */
@@ -398,6 +479,7 @@ function update() {
   renderChosen();
   renderItemsConfig();
   renderResults();
+  renderOrdre();
   saveState();
 }
 
