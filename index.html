@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Opti Enchantements Wakfu</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <h1>⚗️ Opti Enchantements Wakfu</h1>
+  <div id="total-badge" class="total-badge">
+    <span class="total-num" id="total-yellow">0</span> châsse(s) jaune(s) à obtenir
+  </div>
+</header>
+
+<main>
+
+  <section class="panel">
+    <h2>1. Mon personnage</h2>
+    <div class="row">
+      <div class="role-picker" id="role-picker">
+        <label><input type="radio" name="role" value="melee" checked> ⚔️ Mêlée</label>
+        <label><input type="radio" name="role" value="distance"> 🏹 Distance</label>
+        <label><input type="radio" name="role" value="support"> 💚 Support</label>
+      </div>
+      <div class="toggles">
+        <label title="Décoché : les épaulettes passent en rouge (maîtrise mêlée/distance) au lieu de vert (critique doublé)">
+          <input type="checkbox" id="opt-crit" checked> Spé Crit
+        </label>
+        <label title="Bottes et ceinture passent en vert (maîtrise dos doublée)">
+          <input type="checkbox" id="opt-dos"> Spé Dos
+        </label>
+        <label title="Épaulettes et amulette passent en bleu (soins doublés)">
+          <input type="checkbox" id="opt-soins"> Soins
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>2. Mes sublimations <span class="counter" id="subli-counter">0 / 10</span></h2>
+    <div class="search-wrap">
+      <input type="text" id="subli-search" placeholder="Rechercher une sublimation… (ex : carnage)" autocomplete="off">
+      <div class="search-results" id="search-results"></div>
+    </div>
+    <ul class="subli-list" id="subli-list"></ul>
+    <div class="warn" id="subli-warn"></div>
+  </section>
+
+  <section class="panel">
+    <h2 class="collapsible" id="items-toggle">3. Mes objets — châsses déjà en place <span class="chev">▸</span></h2>
+    <div class="items-config hidden" id="items-config">
+      <p class="hint">Optionnel : indique les couleurs de châsses que tu as déjà sur tes objets (surtout les jaunes,
+      elles seront réutilisées par le calcul). Tu peux aussi forcer la couleur opti d'un objet.</p>
+      <div id="items-config-list"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>4. Placement optimal</h2>
+    <div class="legend">
+      <span><i class="dot c-R"></i> rouge</span>
+      <span><i class="dot c-G"></i> vert</span>
+      <span><i class="dot c-B"></i> bleu</span>
+      <span><i class="dot c-Y"></i> jaune</span>
+      <span><i class="dot c-Y new"></i> jaune à obtenir</span>
+      <span><i class="dot c-ANY"></i> libre</span>
+    </div>
+    <div class="results" id="results"></div>
+    <div class="summary" id="summary"></div>
+  </section>
+
+</main>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

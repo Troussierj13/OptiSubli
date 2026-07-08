@@ -1,0 +1,5 @@
+# Config locale de l'outillage (preview Claude Code)
+.claude/
+
+# Screenshot de référence (pseudos visibles), garde en local uniquement
+opti enchantement.png
