@@ -430,13 +430,25 @@ const COLOR_OPTIONS = [
   ["", "—"], ["R", "Rouge"], ["G", "Vert"], ["B", "Bleu"], ["Y", "Jaune"],
 ];
 
+// Cycle des pastilles de châsse au clic : vide → rouge → vert → bleu → jaune → vide
+const CYCLE_COLORS = [null, "R", "G", "B", "Y"];
+
+function defaultItemCfg() {
+  return { override: null, slots: [null, null, null, null], done: false, extraColors: [], focusVie: false, lockedSubli: null };
+}
+
 function renderItemsConfig() {
   const wrap = $("items-config-list");
-  wrap.innerHTML = "";
+  wrap.innerHTML = `
+    <div class="item-cfg-head">
+      <span>Objet</span><span>Couleur opti</span><span>Châsses actuelles</span>
+      <span title="Couleurs non opti mais acceptées : pas de jaune nécessaire, petite perte de stats">Tolère aussi</span>
+      <span>Options</span><span></span>
+    </div>`;
   for (const it of ITEMS) {
     const cfg = state.items[it.id];
     const row = document.createElement("div");
-    row.className = "item-cfg";
+    row.className = "item-cfg" + (cfg.done ? " done" : "");
 
     const opti = effectiveOpti(it);
     const optiTxt = opti === null ? "libre" : COLOR_LABEL[opti];
@@ -444,36 +456,46 @@ function renderItemsConfig() {
     const overrideOpts = [["", `Auto (${optiTxt})`], ...COLOR_OPTIONS.slice(1), ["ANY", "Libre"]]
       .map(([v, l]) => `<option value="${v}" ${cfg.override === (v || null) ? "selected" : ""}>${l}</option>`).join("");
 
-    const slotSelects = cfg.slots.map((v, i) =>
-      `<select data-slot="${i}">` +
-      COLOR_OPTIONS.map(([val, l]) => `<option value="${val}" ${v === (val || null) ? "selected" : ""}>${l}</option>`).join("") +
-      `</select>`).join("");
+    const slotBtns = cfg.slots.map((v, i) =>
+      `<button class="slot-btn ${v ? "c-" + v : "c-empty"}" data-slot="${i}"
+        title="Châsse ${i + 1} : ${v ? COLOR_LABEL[v] : "non déclarée"} — clic pour changer"></button>`).join("");
 
-    const extrasHtml = opti === null ? "" : `
-      <span class="opti-label" title="Couleurs non opti mais acceptables (petite perte de stats assumée) : une exigence de la subli dans une de ces couleurs ne coûte pas de jaune">Tolère aussi :</span>
+    const extrasHtml = opti === null ? `<span class="cfg-none">—</span>` : `
       <span class="extras">${["R", "G", "B"].filter(c => c !== opti).map(c => `
-        <label class="extra-c" title="${COLOR_LABEL[c]}"><input type="checkbox" data-extra="${c}"
+        <label class="extra-c" title="Tolérer ${COLOR_LABEL[c]} sur cet objet"><input type="checkbox" data-extra="${c}"
           ${(cfg.extraColors || []).includes(c) ? "checked" : ""}><i class="dot c-${c}"></i></label>`).join("")}
       </span>`;
 
     row.innerHTML = `
       <span class="item-name">${it.icon} ${it.label}</span>
-      <span class="opti-label">Couleur opti :</span>
-      <select data-override>${overrideOpts}</select>
-      <span class="opti-label">Châsses actuelles :</span>
-      <span class="slots">${slotSelects}</span>
+      <span class="cfg-opti">
+        <i class="dot c-${opti === null ? "ANY" : opti}" title="Couleur opti effective : ${optiTxt}"></i>
+        <select data-override>${overrideOpts}</select>
+      </span>
+      <span class="slots">${slotBtns}</span>
       ${extrasHtml}
-      ${SHARD_BY_NAME.get("Vie").doubleOn.includes(it.id) && !it.any ? `
-      <label class="vie-label" title="Priorité Vie : les PV sont doublés sur cet objet — la couleur opti devient bleue avec des enchantements Vie">
-        <input type="checkbox" data-vie ${cfg.focusVie ? "checked" : ""}> ❤️ vie
-      </label>` : ""}
-      <label class="done-label" title="Châsses figées telles que déclarées : le plan ne proposera plus de nouvelles jaunes ici, et une sublimation n'y sera placée que si les couleurs correspondent déjà">
-        <input type="checkbox" data-done ${cfg.done ? "checked" : ""}> fait
-      </label>`;
+      <span class="cfg-flags">
+        ${SHARD_BY_NAME.get("Vie").doubleOn.includes(it.id) && !it.any ? `
+        <label class="vie-label" title="Priorité Vie : les PV sont doublés sur cet objet — la couleur opti devient bleue avec des enchantements Vie">
+          <input type="checkbox" data-vie ${cfg.focusVie ? "checked" : ""}> ❤️ vie
+        </label>` : ""}
+        <label class="done-label" title="Châsses figées telles que déclarées et sublimation verrouillée : plus rien ne bouge sur cet objet">
+          <input type="checkbox" data-done ${cfg.done ? "checked" : ""}> fait
+        </label>
+        ${cfg.done && cfg.lockedSubli ? `<span class="lock-name" title="Sublimation verrouillée : ${cfg.lockedSubli}">🔒 ${cfg.lockedSubli}</span>` : ""}
+      </span>
+      <button class="row-reset" title="Réinitialiser cet objet (châsses, couleur forcée, tolérances, fait)">↺</button>`;
 
     row.querySelector("[data-override]").addEventListener("change", e => {
       cfg.override = e.target.value || null;
       update();
+    });
+    row.querySelectorAll(".slot-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const i = +btn.dataset.slot;
+        cfg.slots[i] = CYCLE_COLORS[(CYCLE_COLORS.indexOf(cfg.slots[i]) + 1) % CYCLE_COLORS.length];
+        update();
+      });
     });
     row.querySelector("[data-done]").addEventListener("change", e => {
       cfg.done = e.target.checked;
@@ -497,11 +519,10 @@ function renderItemsConfig() {
         update();
       });
     });
-    row.querySelectorAll("[data-slot]").forEach(sel => {
-      sel.addEventListener("change", e => {
-        cfg.slots[+e.target.dataset.slot] = e.target.value || null;
-        update();
-      });
+    row.querySelector(".row-reset").addEventListener("click", () => {
+      state.items[it.id] = defaultItemCfg();
+      if (enchPreview && enchPreview.itemId === it.id) enchPreview = null;
+      update();
     });
     wrap.appendChild(row);
   }
@@ -873,6 +894,13 @@ $("ench-select").addEventListener("change", e => {
 $("items-toggle").addEventListener("click", () => {
   $("items-toggle").classList.toggle("open");
   $("items-config").classList.toggle("hidden");
+});
+
+$("items-reset").addEventListener("click", () => {
+  if (!confirm("Réinitialiser tous les objets ? (châsses déclarées, couleurs forcées, tolérances, états « fait » et sublimations verrouillées)")) return;
+  for (const it of ITEMS) state.items[it.id] = defaultItemCfg();
+  enchPreview = null;
+  update();
 });
 
 loadState();

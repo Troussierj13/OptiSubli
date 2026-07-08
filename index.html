@@ -63,8 +63,13 @@
   <section class="panel">
     <h2 class="collapsible" id="items-toggle">3. Mes objets — châsses déjà en place <span class="chev">▸</span></h2>
     <div class="items-config hidden" id="items-config">
-      <p class="hint">Optionnel : indique les couleurs de châsses que tu as déjà sur tes objets (surtout les jaunes,
-      elles seront réutilisées par le calcul). Tu peux aussi forcer la couleur opti d'un objet.</p>
+      <div class="items-head">
+        <p class="hint">Clique sur une pastille pour déclarer une châsse (vide → rouge → vert → bleu → jaune).
+        Les jaunes déclarées sont réutilisées par le calcul. Tu peux aussi forcer la couleur opti,
+        tolérer d'autres couleurs, ou marquer un objet « fait ».</p>
+        <button id="items-reset" class="btn-reset"
+          title="Réinitialise châsses, couleurs forcées, tolérances et états « fait » de tous les objets">↺ Tout réinitialiser</button>
+      </div>
       <div id="items-config-list"></div>
     </div>
   </section>

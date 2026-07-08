@@ -165,25 +165,94 @@ h2 .counter { color: var(--muted); font-weight: 400; font-size: 14px; }
 .items-config { margin-top: 12px; }
 .hint { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
 
-.item-cfg {
+.items-head {
   display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+.items-head .hint { margin: 0; }
+.btn-reset {
+  background: var(--panel2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-reset:hover { border-color: var(--accent); color: var(--accent); }
+
+#items-config-list { overflow-x: auto; }
+.item-cfg, .item-cfg-head {
+  display: grid;
+  grid-template-columns: 148px 170px 150px 96px minmax(150px, 1fr) 34px;
+  gap: 10px;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 6px 0;
+  min-width: 700px;
+}
+.item-cfg-head {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  padding: 4px 0 6px;
+  border-bottom: 1px solid var(--border);
+}
+.item-cfg {
+  padding: 7px 0;
   border-bottom: 1px solid var(--border);
 }
 .item-cfg:last-child { border-bottom: none; }
-.item-cfg .item-name { width: 150px; font-weight: 600; }
+.item-cfg.done { opacity: .55; }
+.item-cfg .item-name { font-weight: 600; }
 .item-cfg select {
   background: var(--panel2);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 4px 6px;
+  max-width: 140px;
 }
+.item-cfg .cfg-opti { display: flex; align-items: center; gap: 7px; }
 .item-cfg .slots { display: flex; gap: 6px; align-items: center; }
-.item-cfg .opti-label { color: var(--muted); font-size: 13px; }
+.item-cfg .cfg-none { color: var(--muted); }
+.item-cfg .cfg-flags { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.item-cfg .lock-name {
+  color: var(--accent);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.slot-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+.slot-btn.c-empty {
+  background: transparent;
+  border: 2px dashed #555c70;
+}
+.slot-btn:hover { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+
+.row-reset {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  font-size: 14px;
+}
+.row-reset:hover { border-color: var(--accent); color: var(--accent); }
 
 /* ---- Pastilles couleur ---- */
 .dot {
