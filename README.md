@@ -30,8 +30,10 @@ Les choix sont sauvegardés dans le navigateur (localStorage).
   sublimation tout en acceptant l'enchantement opti.
 - Les anneaux sont traités comme des objets « libres » (couleur indifférente) : ils
   accueillent gratuitement les sublimations les plus incompatibles.
-- Le plastron support est opti en 4 jaunes : ces 4 jaunes comptent dans le total
-  mais n'importe quelle sublimation y est « gratuite ».
+- Plastron en support : les résistances sont doublées quelle que soit la couleur des
+  châsses. Un switch « Plastron châsses libres » permet de choisir entre full jaune
+  (4 jaunes, mais choix libre des éléments de résistance) et châsses aux couleurs de
+  la sublimation (0 jaune, éléments imposés par les couleurs).
 - À total de jaunes égal, l'algorithme préfère la solution qui réutilise le plus de
   jaunes déjà en place : les sublimations les plus exigeantes vont sur les objets
   riches en jaunes, les faciles sur les emplacements ordinaires.

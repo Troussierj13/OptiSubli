@@ -35,6 +35,9 @@ const state = {
   crit: true,
   dos: false,
   soins: false,
+  // Support : plastron en châsses libres (résistances doublées quelle que soit la
+  // couleur) au lieu du full jaune qui laisse le choix des éléments de résistance.
+  plastronLibre: false,
   // [{name, qty}]
   chosen: [],
   // itemId -> { override: 'R'|'G'|'B'|'Y'|null, slots: [4 x ('R'|'G'|'B'|'Y'|null)] }
@@ -62,7 +65,10 @@ function effectiveOpti(item) {
   if (state.soins && item.soins) return item.soins;
   if (state.dos && item.dos) return item.dos;
   if (!state.crit && item.sansCrit && state.role !== "support") return item.sansCrit;
-  return item.opti[state.role];
+  const base = item.opti[state.role];
+  // Plastron support en châsses libres : couleur indifférente, comme un anneau
+  if (base === "Y" && state.plastronLibre) return null;
+  return base;
 }
 
 // Meilleur placement d'une subli (ou null) sur un objet.
@@ -363,7 +369,7 @@ function renderResults() {
 function saveState() {
   localStorage.setItem("wakfu-opti", JSON.stringify({
     role: state.role, crit: state.crit, dos: state.dos, soins: state.soins,
-    chosen: state.chosen, items: state.items,
+    plastronLibre: state.plastronLibre, chosen: state.chosen, items: state.items,
   }));
 }
 
@@ -376,6 +382,7 @@ function loadState() {
     state.crit = s.crit !== false;
     state.dos = !!s.dos;
     state.soins = !!s.soins;
+    state.plastronLibre = !!s.plastronLibre;
     state.chosen = (s.chosen || []).filter(c => SUBLI_BY_NAME.has(c.name));
     for (const it of ITEMS) {
       if (s.items && s.items[it.id]) state.items[it.id] = s.items[it.id];
@@ -386,6 +393,8 @@ function loadState() {
 /* ---- Mise à jour globale ---- */
 
 function update() {
+  // Le switch plastron n'a de sens qu'en support (seul cas où l'opti est jaune)
+  $("plastron-libre-wrap").style.display = state.role === "support" ? "" : "none";
   renderChosen();
   renderItemsConfig();
   renderResults();
@@ -400,6 +409,7 @@ document.querySelectorAll('input[name="role"]').forEach(r => {
 $("opt-crit").addEventListener("change", e => { state.crit = e.target.checked; update(); });
 $("opt-dos").addEventListener("change", e => { state.dos = e.target.checked; update(); });
 $("opt-soins").addEventListener("change", e => { state.soins = e.target.checked; update(); });
+$("opt-plastron-libre").addEventListener("change", e => { state.plastronLibre = e.target.checked; update(); });
 
 $("subli-search").addEventListener("input", () => { searchActive = -1; renderSearch(); });
 $("subli-search").addEventListener("keydown", e => {
@@ -428,4 +438,5 @@ document.querySelector(`input[name="role"][value="${state.role}"]`).checked = tr
 $("opt-crit").checked = state.crit;
 $("opt-dos").checked = state.dos;
 $("opt-soins").checked = state.soins;
+$("opt-plastron-libre").checked = state.plastronLibre;
 update();
