@@ -47,7 +47,9 @@ const state = {
   // itemId -> { override: 'R'|'G'|'B'|'Y'|null, slots: [4 x ('R'|'G'|'B'|'Y'|null)] }
   items: {},
 };
-for (const it of ITEMS) state.items[it.id] = { override: null, slots: [null, null, null, null], done: false, extraColors: [] };
+// lockedSubli : nom de la subli verrouillée sur l'objet au moment où il est marqué « fait »
+// (elle ne peut plus migrer ailleurs, et l'objet n'accepte plus rien d'autre)
+for (const it of ITEMS) state.items[it.id] = { override: null, slots: [null, null, null, null], done: false, extraColors: [], lockedSubli: null };
 
 const SUBLI_BY_NAME = new Map(SUBLIMATIONS.map(s => [s.name, s]));
 const SHARD_BY_NAME = new Map(SHARDS.map(s => [s.name, s]));
@@ -210,10 +212,20 @@ function optimize(sublis) {
   const noSubli = ITEMS.map(it =>
     bestPlacement(effectiveOpti(it), state.items[it.id].slots, null,
       state.items[it.id].done, state.items[it.id].extraColors));
-  const withSubli = ITEMS.map(it =>
-    sublis.map(s =>
-      bestPlacement(effectiveOpti(it), state.items[it.id].slots, s.colors.map(c => ID_TO_COLOR[c]),
-        state.items[it.id].done, state.items[it.id].extraColors)));
+  const withSubli = ITEMS.map(it => {
+    const cfg = state.items[it.id];
+    return sublis.map(s => {
+      // Objet fait : seule sa subli verrouillée peut y être placée (rien si pas de verrou)
+      if (cfg.done && s.name !== cfg.lockedSubli) return null;
+      return bestPlacement(effectiveOpti(it), cfg.slots, s.colors.map(c => ID_TO_COLOR[c]),
+        cfg.done, cfg.extraColors);
+    });
+  });
+  // Objet fait avec subli verrouillée : il DOIT la recevoir (tant qu'elle est dans la liste)
+  const mustLock = ITEMS.map(it => {
+    const cfg = state.items[it.id];
+    return cfg.done && cfg.lockedSubli !== null && sublis.some(s => s.name === cfg.lockedSubli);
+  });
 
   // Perte de stats chiffrée par placement (attachée pour l'affichage)
   for (let i = 0; i < ITEMS.length; i++) {
@@ -235,9 +247,11 @@ function optimize(sublis) {
     if (memo.has(key)) return memo.get(key);
 
     let best = null;
-    // Option : pas de subli sur cet objet
-    const rest = go(i + 1, mask);
-    if (rest !== null) best = { score: score(noSubli[i]) + rest.score, pick: -1 };
+    // Option : pas de subli sur cet objet (interdit si une subli y est verrouillée)
+    if (!mustLock[i]) {
+      const rest = go(i + 1, mask);
+      if (rest !== null) best = { score: score(noSubli[i]) + rest.score, pick: -1 };
+    }
     // Option : une des sublis restantes
     for (let s = 0; s < n; s++) {
       if (mask & (1 << s)) continue;
@@ -269,6 +283,23 @@ function optimize(sublis) {
     }
   }
   return { total, perItem };
+}
+
+// Migration des anciennes sauvegardes : objets faits sans verrou de subli → on verrouille
+// la première subli choisie dont les couleurs rentrent telles quelles (en respectant les
+// quantités déjà consommées par d'autres verrous).
+function migrateLocks() {
+  const lockCount = name => ITEMS.filter(o => state.items[o.id].lockedSubli === name).length;
+  for (const it of ITEMS) {
+    const cfg = state.items[it.id];
+    if (!cfg.done || cfg.lockedSubli !== null) continue;
+    for (const c of state.chosen) {
+      if (lockCount(c.name) >= c.qty) continue;
+      const s = SUBLI_BY_NAME.get(c.name);
+      const fit = bestPlacement(null, cfg.slots, s.colors.map(x => ID_TO_COLOR[x]), true, []);
+      if (fit) { cfg.lockedSubli = c.name; break; }
+    }
+  }
 }
 
 // Ordre d'enchantement conseillé : pour chaque objet restant, « levier de chance » =
@@ -428,6 +459,13 @@ function renderItemsConfig() {
     });
     row.querySelector("[data-done]").addEventListener("change", e => {
       cfg.done = e.target.checked;
+      if (cfg.done) {
+        // Verrouille la subli actuellement placée sur cet objet (null si aucune)
+        const pi = lastResult ? lastResult.perItem.find(p => p.item.id === it.id) : null;
+        cfg.lockedSubli = pi && pi.subli ? pi.subli.name : null;
+      } else {
+        cfg.lockedSubli = null;
+      }
       update();
     });
     const vieCb = row.querySelector("[data-vie]");
@@ -490,6 +528,9 @@ function lossUnit(item) {
   return st && st.shard.name === "Vie" ? "vie" : "maîtrise";
 }
 
+// Dernier placement calculé (sert à verrouiller la subli d'un objet marqué « fait »)
+let lastResult = null;
+
 function renderResults() {
   const resBox = $("results");
   const sumBox = $("summary");
@@ -503,10 +544,12 @@ function renderResults() {
   }
 
   const result = optimize(sublis);
+  lastResult = result;
   if (!result) {
     resBox.innerHTML = "";
-    sumBox.innerHTML = "Impossible de tout placer : les objets « faits » n'acceptent une sublimation " +
-      "que si leurs châsses correspondent déjà. Décoche « fait » quelque part ou retire une sublimation.";
+    sumBox.innerHTML = "Impossible de tout placer : vérifie les objets « faits » — chaque subli " +
+      "verrouillée (🔒) doit être dans ta liste en quantité suffisante, et un objet fait n'accepte " +
+      "que sa subli verrouillée. Décoche « fait » quelque part ou ajuste tes sublimations.";
     $("total-yellow").textContent = "–";
     return;
   }
@@ -539,7 +582,7 @@ function renderResults() {
         <span class="item-title">${item.icon} ${item.label}</span>
         <span class="cost ${placement.cost ? "" : "zero"}">${done ? "✓ fait" : placement.cost ? placement.cost + " jaune(s) à obtenir" : "aucun jaune"}</span>
       </div>
-      <div class="subli-name ${subli ? "" : "none"}">${subli ? subli.name : "— aucune sublimation —"}</div>
+      <div class="subli-name ${subli ? "" : "none"}">${subli ? (done && state.items[item.id].lockedSubli === subli.name ? "🔒 " : "") + subli.name : "— aucune sublimation —"}</div>
       <div class="slots">${slots}</div>
       <div class="window">${windowTxt}${placement.reused ? ` · ${placement.reused} jaune(s) déjà en place réutilisée(s)` : ""}${placement.tolerated ? ` · ${placement.tolerated} châsse(s) tolérée(s)${placement.loss ? ` (perte ${placement.loss} ${lossUnit(item)})` : ""}` : ""}</div>`;
     resBox.appendChild(card);
@@ -653,7 +696,7 @@ function renderEnchant() {
   // Un motif par subli choisie : ses 3 couleurs + la couleur opti sur la châsse restante.
   // On simule « objet fait avec ce motif » et on garde ceux qui égalent ou battent le plan.
   const cfg = state.items[it.id];
-  const savedSlots = cfg.slots, savedDone = cfg.done;
+  const savedSlots = cfg.slots, savedDone = cfg.done, savedLock = cfg.lockedSubli;
   const seen = new Set();
   const rows = [];
   for (const c of state.chosen) {
@@ -663,8 +706,9 @@ function renderEnchant() {
     const cols = s.colors.map(x => ID_TO_COLOR[x]);
     cfg.slots = [cols[0], cols[1], cols[2], primary];
     cfg.done = true;
+    cfg.lockedSubli = c.name; // même sémantique que « Je garde » : la subli est consommée ici
     const sim = optimize(sublis);
-    cfg.slots = savedSlots; cfg.done = savedDone;
+    cfg.slots = savedSlots; cfg.done = savedDone; cfg.lockedSubli = savedLock;
     if (!sim || sim.total > base.total) continue;
     rows.push({ name: c.name, cols, freeColor: primary, total: sim.total, delta: base.total - sim.total });
   }
@@ -694,6 +738,7 @@ function renderEnchant() {
       enchPreview = { itemId: state.enchanting, saved: JSON.parse(JSON.stringify(cur)), row: r };
       cur.slots = [r.cols[0], r.cols[1], r.cols[2], r.freeColor];
       cur.done = true;
+      cur.lockedSubli = r.name;
       update();
     });
   });
@@ -725,6 +770,7 @@ function loadState() {
     for (const it of ITEMS) {
       if (s.items && s.items[it.id]) state.items[it.id] = s.items[it.id];
       if (!state.items[it.id].extraColors) state.items[it.id].extraColors = [];
+      if (state.items[it.id].lockedSubli === undefined) state.items[it.id].lockedSubli = null;
     }
   } catch { /* état corrompu : on repart de zéro */ }
 }
@@ -794,6 +840,7 @@ $("items-toggle").addEventListener("click", () => {
 });
 
 loadState();
+migrateLocks();
 // Resynchronise les contrôles avec l'état chargé
 document.querySelector(`input[name="role"][value="${state.role}"]`).checked = true;
 $("opt-crit").checked = state.crit;

@@ -21,7 +21,9 @@ Ouvrir `index.html` dans un navigateur (double-clic), aucune installation néces
    chance » = jaunes économisées si l'objet sortait full jaune. Enchanter d'abord
    les objets à fort levier ; après chaque objet, déclarer les couleurs obtenues
    (section 3) et cocher « fait » — un objet fait garde ses châsses telles quelles
-   et n'accueille une sublimation que si les couleurs correspondent déjà.
+   et **verrouille la sublimation qui y était placée** (🔒) : elle ne peut plus
+   migrer ailleurs et l'objet n'accepte plus rien d'autre. Décocher « fait »
+   libère le verrou.
 6. **Mode enchantement** : sélectionner l'objet en cours de roll ; l'appli liste
    les combinaisons de couleurs (sans jaune) qui égalent ou battent le plan.
    En rouler une → « Prévisualiser » applique le nouveau plan complet, puis
