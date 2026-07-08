@@ -367,3 +367,13 @@ h2 .counter { color: var(--muted); font-weight: 400; font-size: 14px; }
   flex-wrap: wrap;
 }
 .ench-empty { color: var(--muted); font-style: italic; }
+.ench-warn { color: #f0a050; font-size: 13px; }
+.ench-banner .slots { display: flex; gap: 6px; }
+.ench-banner select {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+.ench-banner button:disabled { opacity: .45; cursor: not-allowed; }

@@ -649,15 +649,33 @@ function renderEnchant() {
 
   if (enchPreview) {
     const it = ITEMS.find(i => i.id === enchPreview.itemId);
+    const cfg = state.items[it.id];
     const r = enchPreview.row;
+    const s = SUBLI_BY_NAME.get(r.name);
+    // La combinaison déclarée doit toujours accueillir la subli verrouillée
+    const fit = bestPlacement(null, cfg.slots, s.colors.map(x => ID_TO_COLOR[x]), true, []);
+    const slotSelects = cfg.slots.map((v, i) =>
+      `<select data-ench-slot="${i}">` +
+      COLOR_OPTIONS.map(([val, l]) => `<option value="${val}" ${v === (val || null) ? "selected" : ""}>${l}</option>`).join("") +
+      `</select>`).join("");
     list.innerHTML = `
       <div class="ench-banner">
-        <span>Aperçu : <b>${it.icon} ${it.label}</b> marqué « fait » en</span>
-        <span class="pattern">${r.cols.map(c => dotL(c)).join("")}${dotL(r.freeColor, "free-slot", "châsse restante : couleur opti")}</span>
-        <span>→ total <b>${r.total}</b> jaune(s)${r.delta ? ` (−${r.delta})` : ""}</span>
-        <button id="ench-keep">✓ Je garde</button>
+        <span><b>${it.icon} ${it.label}</b> « fait » avec <b>${r.name}</b>
+          <span class="pattern">${r.cols.map(c => dotL(c)).join("")}</span> 🔒
+          — ajuste si besoin les châsses réellement obtenues :</span>
+        <span class="slots">${slotSelects}</span>
+        ${fit
+          ? `<span>→ total <b>${lastResult ? lastResult.total : "–"}</b> jaune(s)</span>`
+          : `<span class="ench-warn">⚠ ${r.name} ne rentre pas dans ces couleurs (il faut ses 3 couleurs sur les châsses 1-3 ou 2-4, jaune = joker)</span>`}
+        <button id="ench-keep" ${fit ? "" : "disabled"}>✓ Je garde</button>
         <button id="ench-cancel">✕ Annuler</button>
       </div>`;
+    list.querySelectorAll("[data-ench-slot]").forEach(sel2 => {
+      sel2.addEventListener("change", e => {
+        cfg.slots[+e.target.dataset.enchSlot] = e.target.value || null;
+        update();
+      });
+    });
     $("ench-keep").addEventListener("click", () => {
       enchPreview = null;
       state.enchanting = null;
